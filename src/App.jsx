@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Copy, Check, Sun, Moon, Upload, Download, X, File, FileText, Image, Video, PackageOpen, AlertTriangle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import JSZip from 'jszip';
@@ -6,7 +6,6 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 
 export default function Posman() {
   const [roomCode, setRoomCode] = useState('');
-  const [peerId, setPeerId] = useState('');
   const [remoteRoomCode, setRemoteRoomCode] = useState('');
   const [connected, setConnected] = useState(false);
   const [files, setFiles] = useState([]);
@@ -37,6 +36,7 @@ export default function Posman() {
   const connectionRef = useRef(null);
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
+  const autoJoinedRef = useRef(false);
   const pingIntervalRef = useRef(null);
   
   const incomingFilesRef = useRef({});
@@ -56,90 +56,6 @@ export default function Posman() {
 
   const stopHeartbeat = () => {
     if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-  };
-
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js';
-    script.integrity = 'sha384-qOF1Ybxd53PR4BTaDzAk+eXLDARxOKQYQpXPqbJu/xkJWLIDDfP/ZusfTctQyNs+';
-    script.crossOrigin = 'anonymous';
-    script.async = true;
-    script.onload = () => {
-      const code = generateRoomCode();
-      const peer = new window.Peer(code); 
-      
-      peer.on('open', (id) => {
-        setPeerId(id); 
-        setRoomCode(id);
-        setStatus('Ready to share');
-      });
-
-      peer.on('connection', (conn) => {
-        connectionRef.current = conn;
-        
-        conn.on('open', () => {
-          setConnected(true);
-          setStatus('Connected!');
-          startHeartbeat(conn);
-        });
-        
-        conn.on('data', handleIncomingData);
-
-        conn.on('close', () => {
-          setConnected(false);
-          setStatus('Connection closed');
-          stopHeartbeat();
-        });
-      });
-
-      peer.on('error', (err) => {
-        if (err.type === 'unavailable-id') {
-          setStatus('Code taken, refreshing...');
-          setTimeout(() => window.location.reload(), 1500);
-        } else {
-          console.error('Peer error:', err);
-        }
-      });
-
-      peerRef.current = peer;
-    };
-    
-    document.head.appendChild(script);
-
-    return () => {
-      if (peerRef.current) peerRef.current.destroy();
-      stopHeartbeat();
-    };
-  }, []);
-
-  const connectToRoom = async () => {
-    if (!remoteRoomCode || remoteRoomCode.length !== 6) {
-      setStatus('Please enter a 6-digit room code');
-      return;
-    }
-
-    setStatus('Connecting...');
-    const conn = peerRef.current.connect(remoteRoomCode);
-    
-    conn.on('open', () => {
-      connectionRef.current = conn;
-      setConnected(true);
-      setStatus('Connected!');
-      startHeartbeat(conn);
-    });
-
-    conn.on('data', handleIncomingData);
-
-    conn.on('close', () => {
-      setConnected(false);
-      setStatus('Connection closed');
-      stopHeartbeat();
-    });
-
-    conn.on('error', (err) => {
-      setStatus('Could not connect - check the room code');
-      stopHeartbeat();
-    });
   };
 
   const handleIncomingData = async (data) => {
@@ -220,6 +136,90 @@ export default function Posman() {
     }
   };
 
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js';
+    script.integrity = 'sha384-qOF1Ybxd53PR4BTaDzAk+eXLDARxOKQYQpXPqbJu/xkJWLIDDfP/ZusfTctQyNs+';
+    script.crossOrigin = 'anonymous';
+    script.async = true;
+    script.onload = () => {
+      const code = generateRoomCode();
+      const peer = new window.Peer(code); 
+      
+      peer.on('open', (id) => {
+        setRoomCode(id);
+        setStatus('Ready to share');
+      });
+
+      peer.on('connection', (conn) => {
+        connectionRef.current = conn;
+        
+        conn.on('open', () => {
+          setConnected(true);
+          setStatus('Connected!');
+          startHeartbeat(conn);
+        });
+        
+        conn.on('data', handleIncomingData);
+
+        conn.on('close', () => {
+          setConnected(false);
+          setStatus('Connection closed');
+          stopHeartbeat();
+        });
+      });
+
+      peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+          setStatus('Code taken, refreshing...');
+          setTimeout(() => window.location.reload(), 1500);
+        } else {
+          console.error('Peer error:', err);
+        }
+      });
+
+      peerRef.current = peer;
+    };
+    
+    document.head.appendChild(script);
+
+    return () => {
+      if (peerRef.current) peerRef.current.destroy();
+      stopHeartbeat();
+    };
+  }, []);
+
+  const connectToRoom = async (codeArg) => {
+    const target = typeof codeArg === 'string' ? codeArg : remoteRoomCode;
+    if (!target || target.length !== 6) {
+      setStatus('Please enter a 6-digit room code');
+      return;
+    }
+
+    setStatus('Connecting...');
+    const conn = peerRef.current.connect(target);
+    
+    conn.on('open', () => {
+      connectionRef.current = conn;
+      setConnected(true);
+      setStatus('Connected!');
+      startHeartbeat(conn);
+    });
+
+    conn.on('data', handleIncomingData);
+
+    conn.on('close', () => {
+      setConnected(false);
+      setStatus('Connection closed');
+      stopHeartbeat();
+    });
+
+    conn.on('error', () => {
+      setStatus('Could not connect - check the room code');
+      stopHeartbeat();
+    });
+  };
+
   const removeReceivedFile = (fileId, fileUrl) => {
     setReceivedFiles(prev => prev.filter(f => f.id !== fileId));
     if (fileUrl) {
@@ -228,7 +228,7 @@ export default function Posman() {
   };
 
   const sendSingleFile = async (fileObj, index) => {
-    return new Promise(async (resolve) => {
+    {
       try {
         const file = fileObj.file;
         const CHUNK_SIZE = 256 * 1024;
@@ -280,13 +280,12 @@ export default function Posman() {
           fileName: file.name
         });
 
-        setTimeout(() => resolve(), 20);
+        await new Promise(r => setTimeout(r, 20));
 
       } catch (error) {
         console.error("Transfer failed:", error);
-        resolve();
       }
-    });
+    }
   };
 
   const sendFiles = async () => {
@@ -437,10 +436,13 @@ export default function Posman() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const room = params.get('room');
-    if (room && peerRef.current && !connected) {
+    if (room && roomCode && peerRef.current?.open && !autoJoinedRef.current) {
+      autoJoinedRef.current = true;
       setRemoteRoomCode(room);
-      setTimeout(() => connectToRoom(), 1000);
+      connectToRoom(room);
     }
+    // Runs once when our own peer is ready; connectToRoom is intentionally not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode]);
 
   const fmtTime = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -518,7 +520,7 @@ export default function Posman() {
             <p className="label mb-[8px]">Join a room</p>
             <div className="flex gap-[8px]">
               <input type="text" inputMode="numeric" value={remoteRoomCode} onChange={(e) => setRemoteRoomCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" disabled={connected} maxLength={6} className="input text-center font-mono tracking-widest" />
-              <button onClick={connectToRoom} disabled={connected || remoteRoomCode.length !== 6} className="btn shrink-0">
+              <button onClick={() => connectToRoom()} disabled={connected || remoteRoomCode.length !== 6} className="btn shrink-0">
                 {connected ? 'Connected' : 'Join'}
               </button>
             </div>
