@@ -3,6 +3,7 @@ import { Copy, Check, Sun, Moon, Upload, Download, X, File, FileText, Image, Vid
 import { QRCodeSVG } from 'qrcode.react';
 import JSZip from 'jszip';
 import { SpeedInsights } from "@vercel/speed-insights/react";
+import { Analytics } from '@vercel/analytics/react';
 
 export default function Posman() {
   const [roomCode, setRoomCode] = useState('');
@@ -653,6 +654,7 @@ export default function Posman() {
       </div>
 
       <SpeedInsights />
+      <Analytics />
     </div>
   );
 }
