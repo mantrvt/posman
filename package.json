@@ -1,5 +1,5 @@
 {
-  "name": "p2p-transfer",
+  "name": "posman",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,15 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.6.1",
     "@vercel/speed-insights": "^2.0.0",
     "jszip": "^3.10.1",
     "lucide-react": "^1.14.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "three": "^0.184.0"
+    "react-dom": "^19.2.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
