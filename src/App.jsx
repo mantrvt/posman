@@ -4,6 +4,19 @@ import { QRCodeSVG } from 'qrcode.react';
 import JSZip from 'jszip';
 import { SpeedInsights } from "@vercel/speed-insights/react";
 
+// STUN finds your public address; TURN relays traffic when a direct connection is
+// impossible (different networks, mobile data, strict firewalls).
+// The TURN entries are a free public relay (best effort). For reliable production use,
+// replace them with your own credentials (e.g. metered.ca or Cloudflare Calls).
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turns:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+
 export default function Posman() {
   const [roomCode, setRoomCode] = useState('');
   const [remoteRoomCode, setRemoteRoomCode] = useState('');
@@ -37,6 +50,7 @@ export default function Posman() {
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
   const autoJoinedRef = useRef(false);
+  const connectTimeoutRef = useRef(null);
   const pingIntervalRef = useRef(null);
   
   const incomingFilesRef = useRef({});
@@ -144,7 +158,7 @@ export default function Posman() {
     script.async = true;
     script.onload = () => {
       const code = generateRoomCode();
-      const peer = new window.Peer(code); 
+      const peer = new window.Peer(code, { config: { iceServers: ICE_SERVERS } });
       
       peer.on('open', (id) => {
         setRoomCode(id);
@@ -173,9 +187,19 @@ export default function Posman() {
         if (err.type === 'unavailable-id') {
           setStatus('Code taken, refreshing...');
           setTimeout(() => window.location.reload(), 1500);
+        } else if (err.type === 'peer-unavailable') {
+          clearTimeout(connectTimeoutRef.current);
+          setStatus('Room not found - check the code');
+        } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
+          setStatus('Server unreachable - check your internet');
         } else {
           console.error('Peer error:', err);
         }
+      });
+
+      peer.on('disconnected', () => {
+        // Lost the signalling server (not the peer connection) - try to get back.
+        if (!peer.destroyed) peer.reconnect();
       });
 
       peerRef.current = peer;
@@ -196,10 +220,24 @@ export default function Posman() {
       return;
     }
 
+    if (!peerRef.current?.open) {
+      setStatus('Still starting up - try again in a moment');
+      return;
+    }
+
     setStatus('Connecting...');
-    const conn = peerRef.current.connect(target);
+    const conn = peerRef.current.connect(target, { reliable: true });
+
+    clearTimeout(connectTimeoutRef.current);
+    connectTimeoutRef.current = setTimeout(() => {
+      if (!conn.open) {
+        conn.close();
+        setStatus('Could not connect - network may be blocking it. Try again');
+      }
+    }, 20000);
     
     conn.on('open', () => {
+      clearTimeout(connectTimeoutRef.current);
       connectionRef.current = conn;
       setConnected(true);
       setStatus('Connected!');
@@ -215,6 +253,7 @@ export default function Posman() {
     });
 
     conn.on('error', () => {
+      clearTimeout(connectTimeoutRef.current);
       setStatus('Could not connect - check the room code');
       stopHeartbeat();
     });
