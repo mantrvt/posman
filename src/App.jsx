@@ -72,6 +72,17 @@ export default function Posman() {
     if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
   };
 
+  // Surfaces WebRTC path failures (blocked network, no relay) instead of hanging silently.
+  const watchIce = (conn) => {
+    const pc = conn.peerConnection;
+    if (!pc) return;
+    pc.addEventListener('iceconnectionstatechange', () => {
+      if (pc.iceConnectionState === 'failed') {
+        setStatus('Connection failed - network is blocking it. Try another network');
+      }
+    });
+  };
+
   const handleIncomingData = async (data) => {
     if (data.type === 'ping') return;
 
@@ -167,6 +178,7 @@ export default function Posman() {
 
       peer.on('connection', (conn) => {
         connectionRef.current = conn;
+        watchIce(conn);
         
         conn.on('open', () => {
           setConnected(true);
@@ -204,10 +216,21 @@ export default function Posman() {
 
       peerRef.current = peer;
     };
+
+    // iOS/iPadOS suspend background tabs and drop the signalling socket.
+    // Reconnect when the user comes back so the room code is joinable again.
+    const onVisible = () => {
+      const peer = peerRef.current;
+      if (document.visibilityState === 'visible' && peer && peer.disconnected && !peer.destroyed) {
+        peer.reconnect();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
     
     document.head.appendChild(script);
 
     return () => {
+      document.removeEventListener('visibilitychange', onVisible);
       if (peerRef.current) peerRef.current.destroy();
       stopHeartbeat();
     };
@@ -227,6 +250,7 @@ export default function Posman() {
 
     setStatus('Connecting...');
     const conn = peerRef.current.connect(target, { reliable: true });
+    watchIce(conn);
 
     clearTimeout(connectTimeoutRef.current);
     connectTimeoutRef.current = setTimeout(() => {
